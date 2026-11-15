@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- fix day-partition load chain (`ParallelReadFile`/`ParallelReadSqlite` with
+  `partition_target_table_by_day_id` and `truncate_partitions`): an incremental
+  run now fixes its full input by the affected days and reloads every file of a
+  changed day into staging tables, replacing the published day partition
+  transactionally only after all loads succeed. This prevents `ONLY_CHANGED`
+  runs from dropping data of unchanged files of the same day. Failed loads keep
+  the old partition readable, reruns are idempotent, and concurrent backfills
+  can no longer overwrite a newer result with an older input (advisory lock plus
+  day-load manifest). Other read modes, append partitions and non-partition
+  loads are unchanged.
+- add `processed_files.track_processed_files` for batch, only-move-forward
+  processed-file bookkeeping
+- fix `Task.add_command`/`add_commands` raising `AttributeError` for tasks
+  constructed with a command list
+
 ## 3.5.0 (2023-12-06)
 
 - add entry point `mara.commands` (for [mara-cli](https://github.com/mara/mara-cli) support)

@@ -85,6 +85,10 @@ class Task(Node):
         super().__init__(id, description)
         self.max_retries = max_retries
 
+        # always initialize so that `is_dynamic_commands` and the add_command*
+        # methods work for tasks constructed with a command list as well
+        self.__dynamic_commands_generator_func = None
+
         if callable(commands):
             self._commands = None
             self.__dynamic_commands_generator_func = commands

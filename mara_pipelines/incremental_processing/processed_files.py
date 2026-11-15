@@ -1,7 +1,7 @@
 """Functions for keeping track whether an input file has already been 'processed' """
 
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Iterable, Tuple
 
 import sqlalchemy
 from sqlalchemy.orm import declarative_base
@@ -39,6 +39,40 @@ VALUES ({'%s,%s,%s'})
 ON CONFLICT (node_path, file_name)
 DO UPDATE SET last_modified_timestamp = EXCLUDED.last_modified_timestamp
 ''', (node_path, file_name, last_modified_timestamp))
+    return True
+
+
+def track_processed_files(node_path: str, files_with_timestamps: Iterable[Tuple[str, datetime]]):
+    """
+    Records that a batch of files has been 'processed' by a node in one go.
+
+    In contrast to `track_processed_file`, an already stored timestamp is never
+    moved backwards. That makes the call safe when several pipeline runs publish
+    concurrently: a stale run that finishes after a fresher one cannot overwrite
+    the fresher processing record with an older file modification timestamp.
+
+    Args:
+        node_path: The path of the node that processed the files
+        files_with_timestamps: Pairs of (file name, last modification timestamp)
+
+    Returns: True
+    """
+    files_with_timestamps = list(files_with_timestamps)
+    if not files_with_timestamps:
+        return True
+
+    with mara_db.dbs.cursor_context('mara') as cursor:
+        # executemany is required because psycopg2's execute does not accept a
+        # sequence of parameter tuples for a single placeholder group
+        cursor.executemany(f'''
+INSERT INTO data_integration_processed_file (node_path, file_name, last_modified_timestamp)
+VALUES ({'%s,%s,%s'})
+ON CONFLICT (node_path, file_name)
+DO UPDATE SET last_modified_timestamp = GREATEST(
+    data_integration_processed_file.last_modified_timestamp,
+    EXCLUDED.last_modified_timestamp)
+''', [(node_path, file_name, last_modification_timestamp)
+      for file_name, last_modification_timestamp in files_with_timestamps])
     return True
 
 
